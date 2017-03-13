@@ -1,0 +1,92 @@
+#! /usr/bin/env perl
+
+use strict;
+use warnings;
+
+#
+# A Munin plugin.
+#
+# Fetches CPU utilisation via SNMP.
+#
+
+my $host = exists $ENV{'host'} ? $ENV{'host'} : 'localhost';
+
+my $oid_subtree = '.1.3.6.1.4.1.2021.11'; # UC Davis MIB
+
+if (exists $ARGV[0] and $ARGV[0] eq 'autoconf') {
+    print "yes\n";
+    exit 0;
+}
+
+if (exists $ARGV[0] and $ARGV[0] eq "config") {
+    print "graph_title CPU usage\n";
+    print "graph_order intr sys intr user nice idle wait\n";
+    print "graph_args --base 1000 -r --lower-limit 0\n";
+    print "graph_vlabel %\n";
+    print "graph_scale no\n";
+    print "graph_info This graph shows how CPU time is spent.\n";
+    print "graph_category system\n";
+
+    print "intr.label intr\n";
+    print "intr.draw AREA\n";
+    print "intr.type DERIVE\n";
+    print "intr.min 0\n";
+
+    print "sys.label system\n";
+    print "sys.draw STACK\n";
+    print "sys.type DERIVE\n";
+    print "sys.min 0\n";
+
+    print "user.label user\n";
+    print "user.draw STACK\n";
+    print "user.type DERIVE\n";
+    print "user.min 0\n";
+
+    print "nice.label nice\n";
+    print "nice.draw STACK\n";
+    print "nice.type DERIVE\n";
+    print "nice.min 0\n";
+
+    print "idle.label idle\n";
+    print "idle.draw STACK\n";
+    print "idle.type DERIVE\n";
+    print "idle.min 0\n";
+    print "idle.colour COLOUR18\n"; # have higher contrast
+
+    print "wait.label wait\n";
+    print "wait.draw STACK\n";
+    print "wait.type DERIVE\n";
+    print "wait.min 0\n";
+
+    exit 0;
+}
+
+open(my $mib, "-|", "snmpwalk -v2c -c public $host $oid_subtree")
+    or die "cannot open: $!";
+
+my (@user, @nice, @sys, @idle, @wait, @intr);
+
+while (<$mib>) {
+    if (/^UCD-SNMP-MIB::ssCpuRawUser\./)      { pushv (\@user) }
+    if (/^UCD-SNMP-MIB::ssCpuRawNice\./)      { pushv (\@nice) }
+    if (/^UCD-SNMP-MIB::ssCpuRawSystem\./)    { pushv (\@sys)  }
+    if (/^UCD-SNMP-MIB::ssCpuRawIdle\./)      { pushv (\@idle) }
+    if (/^UCD-SNMP-MIB::ssCpuRawWait\./)      { pushv (\@wait) }
+    if (/^UCD-SNMP-MIB::ssCpuRawInterrupt\./) { pushv (\@intr) }
+}
+
+print "intr.value $intr[0]\n";
+print "sys.value $sys[0]\n";
+print "user.value $user[0]\n";
+print "nice.value $nice[0]\n";
+print "idle.value $idle[0]\n";
+print "wait.value $wait[0]\n";
+
+sub getv {
+    chomp; s/.*\s//;
+}
+
+sub pushv {
+    my ($arg1) = @_;
+    getv; push @$arg1, $_;
+}

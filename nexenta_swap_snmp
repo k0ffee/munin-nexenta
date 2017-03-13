@@ -1,0 +1,63 @@
+#! /usr/bin/env perl
+
+use strict;
+use warnings;
+
+#
+# A Munin plugin.
+#
+# Fetches swap space utilisation via SNMP.
+#
+
+my $host = exists $ENV{'host'} ? $ENV{'host'} : 'localhost';
+
+my $oid_subtree = '.1.3.6.1.4.1.2021.4';  # UC Davis MIB
+
+if (exists $ARGV[0] and $ARGV[0] eq 'autoconf') {
+    print "yes\n";
+    exit 0;
+}
+
+open(my $mib, "-|", "snmpwalk -v2c -c public $host $oid_subtree")
+    or die "cannot open: $!";
+
+my (@swap_total, @swap_avail);
+
+while (<$mib>) {
+    if (/^UCD-SNMP-MIB::memTotalSwap\./) { pushv (\@swap_total) }
+    if (/^UCD-SNMP-MIB::memAvailSwap\./) { pushv (\@swap_avail) }
+}
+
+my $offset = 0;
+
+if (exists $ARGV[0] and $ARGV[0] eq "config") {
+    print "graph_title Swap space\n";
+    print "graph_args -l 0 --base 1024\n";
+    print "graph_vlabel bytes\n";
+    print "graph_category system\n";
+    print "graph_info This graph shows the swap utilisation of the system.\n";
+
+    foreach my $swap_total (@swap_total) {
+        print "swap_used_$offset.label used($offset)\n";
+        print "swap_used_$offset.draw AREA\n";
+        print "swap_avail_$offset.label avail($offset)\n";
+        print "swap_avail_$offset.draw STACK\n";
+    }
+
+    exit 0;
+}
+
+foreach my $swap_total (@swap_total) {
+    print "swap_used_$offset.value " . ($swap_total-$swap_avail[$offset]) ."\n";
+    print "swap_avail_$offset.value $swap_avail[$offset]\n";
+    $offset++;
+}
+
+sub getv {
+    chomp; s/.*\s+(\d+)\s+\S+/$1/;
+}
+
+sub pushv {
+    my ($arg1) = @_;
+    getv; push @$arg1, $_;
+}

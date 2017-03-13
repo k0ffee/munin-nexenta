@@ -1,0 +1,71 @@
+#! /usr/bin/env perl
+
+use strict;
+use warnings;
+
+#
+# A Munin plugin.
+#
+# Fetches network interface packets traffic for Munin via SNMP.
+#
+
+my $host = exists $ENV{'host'} ? $ENV{'host'} : 'localhost';
+
+my $oid_subtree = '.1.3.6.1.2.1'; # interfaces MIB
+
+if (exists $ARGV[0] and $ARGV[0] eq 'autoconf') {
+    print "yes\n";
+    exit 0;
+}
+
+open(my $mib, "-|", "snmpwalk -v2c -c public $host $oid_subtree")
+    or die "cannot open: $!";
+
+my (@interfaces, @packets_in, @packets_out);
+
+while (<$mib>) {
+    if (/^IF-MIB::ifName\./)           { pushv (\@interfaces) }
+    if (/^IF-MIB::ifHCInUcastPkts\./)  { pushv (\@packets_in) }
+    if (/^IF-MIB::ifHCOutUcastPkts\./) { pushv (\@packets_out) }
+}
+
+my $offset = 0;
+
+if (exists $ARGV[0] and $ARGV[0] eq "config") {
+    print "graph_title interface packets\n";
+    print "graph_args --base 1000\n";
+    print "graph_vlabel packets in (-) / out (+)\n";
+    print "graph_category network\n";
+    print "graph_info This graph shows network interface traffic.\n";
+
+    foreach my $interface (@interfaces) {
+        print "packets_in_$interface.label $interface\n";
+        print "packets_in_$interface.type DERIVE\n";
+        print "packets_in_$interface.graph no\n";
+        print "packets_in_$interface.cdef packets_in_$interface,8,*\n";
+        print "packets_in_$interface.min 0\n";
+        print "packets_out_$interface.label $interface\n";
+        print "packets_out_$interface.type DERIVE\n";
+        print "packets_out_$interface.negative packets_in_$interface\n";
+        print "packets_out_$interface.cdef packets_out_$interface,8,*\n";
+        print "packets_out_$interface.min 0\n";
+        $offset++;
+    }
+
+    exit 0;
+}
+
+foreach my $interface (@interfaces) {
+    print "packets_in_$interface.value $packets_in[$offset]" . "\n";
+    print "packets_out_$interface.value $packets_out[$offset]" . "\n";
+    $offset++;
+}
+
+sub getv {
+    chomp; s/.*\s//;
+}
+
+sub pushv {
+    my ($arg1) = @_;
+    getv; push @$arg1, $_;
+}

@@ -1,0 +1,120 @@
+#! /usr/bin/env perl
+
+use strict;
+use warnings;
+
+#
+# A Munin plugin.
+#
+# Fetches percentage of space used on Nexenta storage devices
+# using NexentaStor REST-API.
+#
+
+my $host =    exists $ENV{'host'}     ? $ENV{'host'}     : 'localhost';
+my $port =    exists $ENV{'port'}     ? $ENV{'port'}     : '8457';
+my $user =    exists $ENV{'username'} ? $ENV{'username'} : 'munin';
+my $pass =    exists $ENV{'password'} ? $ENV{'password'} : 'munin';
+my $uri  =    exists $ENV{'uri'}      ? $ENV{'uri'}      :
+    "http://$user:$pass\@$host:$port/rest/nms";
+my $syspool = exists $ENV{'syspool'}  ? $ENV{'syspool'}  : 'syspool';
+
+if (exists $ARGV[0] and $ARGV[0] eq 'autoconf') {
+    print "yes\n";
+    exit 0;
+}
+
+use LWP::UserAgent;
+use JSON;
+
+my ($data, $json, $response) = ('', '', '');
+
+sub request {
+    my $request = HTTP::Request->new (POST => $uri);
+    $request->content_type('application/json');
+    $request->content($data);
+
+    my $ua = LWP::UserAgent->new;
+    my $response = $ua->request($request);
+    return $response;
+}
+
+my @folders = ($syspool);
+
+$data = '{"object":"folder", "method":"get_names", "params":[""]}';
+$response = request;
+
+if ($response->is_success) {
+    $json = decode_json($response->decoded_content);
+
+    foreach my $folder (@{$json->{result}}) {
+        push @folders, $folder;
+    }
+}
+
+if (exists $ARGV[0] and $ARGV[0] eq "config") {
+    print "graph_title Disk usage in percent\n";
+    print "graph_args --upper-limit 100 -l 0\n";
+    print "graph_vlabel %\n";
+    print "graph_scale no\n";
+    print "graph_category disk\n";
+    foreach my $folder (@folders) {
+        print sanitize_name($folder) . ".label $folder\n";
+    }
+    exit 0;
+}
+
+my ($used, $avail, $percent) = (0, 0, 0);
+
+foreach my $folder (@folders) {
+    $data = '{"object":"folder",
+             "method":"get_child_prop",
+             "params":["' . $folder . '", "used"]}';
+
+    $response = request;
+
+    if ($response->is_success) {
+        $json = decode_json($response->decoded_content);
+        $used = $json->{result};
+    }
+
+    $data = '{"object":"folder",
+             "method":"get_child_prop",
+             "params":["' . $folder . '", "available"]}';
+
+    $response = request;
+
+    if ($response->is_success) {
+        $json  = decode_json($response->decoded_content);
+        $avail = $json->{result};
+    }
+
+    my $n_used  = unformat_number($used);
+    my $n_avail = unformat_number($avail);
+
+    if (($n_avail + $n_used) > 0) {
+        $percent = $n_used / ($n_avail + $n_used) * 100;
+    } else {
+        $percent = 0;
+    }
+
+    printf sanitize_name($folder) . ".value %.2f\n", $percent;
+}
+
+sub sanitize_name {
+    my $name = shift;
+    $name =~ s/[^[:alnum:]]/_/g;
+    return $name;
+}
+
+sub unformat_number {
+    my $number = shift;
+    my $base   = 1024;
+    my @symbols = ('', qw(K M G T P E Z Y));
+    foreach my $offset (0 .. $#symbols) {
+        my $symbol = $symbols[$offset];
+        if ($number =~ /^([\d.]+)$symbol\z/i ) {
+            return ($1 * ($base ** $offset));
+        }
+    }
+    return $number;
+}
