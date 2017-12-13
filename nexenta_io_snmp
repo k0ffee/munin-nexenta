@@ -18,7 +18,7 @@ if (exists $ARGV[0] and $ARGV[0] eq 'autoconf') {
     exit 0;
 }
 
-open(my $mib, "-|", "snmpwalk -v2c -c public $host $oid_subtree")
+open(my $mib, "-|", "snmpwalk -v2c -c public -- $host $oid_subtree")
     or die "cannot open: $!";
 
 my (@io_read, @io_write);

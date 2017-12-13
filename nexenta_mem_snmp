@@ -13,7 +13,7 @@ my $host = exists $ENV{'host'} ? $ENV{'host'} : 'localhost';
 
 my $oid_subtree = '.1.3.6.1.4.1.2021.4';  # UC Davis MIB
 
-open(my $mib, "-|", "snmpwalk -v2c -c public $host $oid_subtree")
+open(my $mib, "-|", "snmpwalk -v2c -c public -- $host $oid_subtree")
     or die "cannot open: $!";
 
 if (exists $ARGV[0] and $ARGV[0] eq 'autoconf') {
