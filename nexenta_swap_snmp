@@ -18,7 +18,7 @@ if (exists $ARGV[0] and $ARGV[0] eq 'autoconf') {
     exit 0;
 }
 
-open(my $mib, "-|", "snmpwalk -v2c -c public -- $host $oid_subtree")
+open(my $mib, "-|", "snmpwalk -c public -v 2c -- $host $oid_subtree")
     or die "cannot open: $!";
 
 my (@swap_total, @swap_avail);
@@ -58,6 +58,6 @@ sub getv {
 }
 
 sub pushv {
-    my ($arg1) = @_;
+    my $arg1 = @_;
     getv; push @$arg1, $_;
 }
